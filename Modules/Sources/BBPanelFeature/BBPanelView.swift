@@ -11,25 +11,19 @@ import SharedUI
 import UploadBoxFeature
 
 @ViewAction(for: BBPanelFeature.self)
-public struct BBPanelView<Leading: View>: View {
+public struct BBPanelView: View {
     
     // MARK: - Properties
     
     @Perception.Bindable public var store: StoreOf<BBPanelFeature>
     @Environment(\.tintColor) private var tintColor
     
-    private let leading: Leading
-
     @State private var selectedColor: Color = .clear
     
     // MARK: - Init
     
-    public init(
-        store: StoreOf<BBPanelFeature>,
-        @ViewBuilder leading: () -> Leading = { EmptyView() }
-    ) {
+    public init(store: StoreOf<BBPanelFeature>) {
         self.store = store
-        self.leading = leading()
     }
     
     // MARK: - Body
@@ -45,7 +39,6 @@ public struct BBPanelView<Leading: View>: View {
                     HStack(spacing: 24) {
                         switch store.viewState {
                         case .tags:
-                            leading
                             Tags()
                         case .fontSizes:
                             FontSizes()

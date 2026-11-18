@@ -21,6 +21,7 @@ public struct QMSScreen: View {
     // MARK: - Properties
     
     @Perception.Bindable public var store: StoreOf<QMSFeature>
+    @Environment(\.tintColor) private var tintColor
     @FocusState private var focusedChatId: Int?
     
     // MARK: - Init
@@ -183,6 +184,19 @@ public struct QMSScreen: View {
             .disabled(store.isSending)
             
             HStack(alignment: .bottom, spacing: 8) {
+                Button {
+                    send(.attachmentButtonTapped)
+                } label: {
+                    Image(systemSymbol: .paperclip)
+                        .font(.title3.weight(.medium))
+                        .foregroundStyle(tintColor)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("qms.attachments.add", bundle: .module))
+                .disabled(store.isSending || store.upload.isAnyFileUploading)
+
                 SharedUI.Field(
                     content: $store.draft.text,
                     placeholder: LocalizedStringResource("qms.textfield.placeholder", bundle: .module),
@@ -192,18 +206,7 @@ public struct QMSScreen: View {
                     selection: $store.draft.selection
                 ) {
                     WithPerceptionTracking {
-                        BBPanelView(store: store.scope(\.bbPanel, action: \.bbPanel)) {
-                            Button {
-                                send(.attachmentButtonTapped)
-                            } label: {
-                                Image(systemSymbol: .paperclip)
-                                    .font(.title3)
-                                    .foregroundStyle(Color(.Labels.primary))
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(Text("qms.attachments.add", bundle: .module))
-                            .disabled(store.upload.isAnyFileUploading)
-                        }
+                        BBPanelView(store: store.scope(\.bbPanel, action: \.bbPanel))
                     }
                 }
                 .fixedSize(horizontal: false, vertical: true)

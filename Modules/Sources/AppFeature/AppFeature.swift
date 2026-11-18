@@ -392,6 +392,10 @@ public struct AppFeature: Reducer, Sendable {
             case .userDidLogin(userId: _):
                 return .run { _ in
                     do {
+                        // The app may have connected anonymously before login.
+                        // PDAPI keeps that login type until reconnect, which makes uploads fail with uploadNotAuthorized.
+                        await apiClient.disconnect()
+                        try await apiClient.connect(inBackground: false)
                         let unread = try await apiClient.getUnread(type: .all)
                         await notificationsClient.showUnreadNotifications(unread)
                     } catch {

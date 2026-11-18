@@ -31,6 +31,8 @@ public struct UploadBoxFile: Sendable, Identifiable, Equatable {
         case sizeTooBig
         case badExtension
         case uploadFailure
+        case notAuthorized
+        case timedOut
         
         case noAccessToSSR
         case emptyFileData

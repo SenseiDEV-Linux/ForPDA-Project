@@ -91,6 +91,16 @@
         }
       }
     },
+    "Please log in again and try again" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пожалуйста, войдите снова и попробуйте ещё раз"
+          }
+        }
+      }
+    },
     "Select another file. If there are already files in the queue, it will be uploaded last" : {
       "localizations" : {
         "ru" : {
@@ -157,6 +167,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unable to access security scoped resource"
+          }
+        }
+      }
+    },
+    "Upload is not authorized" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Загрузка не авторизована"
           }
         }
       }

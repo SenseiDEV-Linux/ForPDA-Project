@@ -122,7 +122,7 @@ public struct APIClient: Sendable {
 
 extension APIClient: DependencyKey {
     
-    public static let api = API()
+    public static let api = API(configuration: APIConfiguration(requestTimeout: .seconds(60)))
     
     // MARK: - Live Value
     

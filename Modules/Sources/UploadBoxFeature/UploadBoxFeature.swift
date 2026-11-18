@@ -29,6 +29,8 @@ public struct UploadBoxFeature: Reducer, Sendable {
         static let badFileExtension = LocalizedStringResource("Sorry, this format is not supported", bundle: .module)
         static let unknownUploadError = LocalizedStringResource("Sorry, unknown error occured", bundle: .module)
         static let selectAnotherFile = LocalizedStringResource("Select another file. If there are already files in the queue, it will be uploaded last", bundle: .module)
+        static let uploadNotAuthorized = LocalizedStringResource("Upload is not authorized", bundle: .module)
+        static let uploadNotAuthorizedMessage = LocalizedStringResource("Please log in again and try again", bundle: .module)
     }
     
     // MARK: - Destination
@@ -295,6 +297,16 @@ public struct UploadBoxFeature: Reducer, Sendable {
                     if let id {
                         state.destination = .alert(.reuploadFileConfirmation(id: id))
                     }
+                case .notAuthorized:
+                    state.destination = .alert(.criticalFileConfirmation(
+                        fileId: id,
+                        title: TextState(Localization.uploadNotAuthorized),
+                        message: TextState(Localization.uploadNotAuthorizedMessage)
+                    ))
+                case .timedOut:
+                    if let id {
+                        state.destination = .alert(.reuploadFileConfirmation(id: id))
+                    }
                 case .noAccessToSSR:
                     state.destination = .alert(.noAccessToSecurityScopedResource)
                 }
@@ -374,15 +386,28 @@ public struct UploadBoxFeature: Reducer, Sendable {
                     
                     await send(.delegate(.someFileUploading))
                     
-                    for try await status in await apiClient.upload(request) {
-                        await send(.internal(.updateFileUploadStatus(file.id, status)))
+                    var shouldRetryAfterReconnect = true
+                    while true {
+                        do {
+                            for try await status in await apiClient.upload(request) {
+                                await send(.internal(.updateFileUploadStatus(file.id, status)))
+                            }
+                            break
+                        } catch {
+                            if shouldRetryAfterReconnect, case PDAPIError.uploadNotAuthorized = error {
+                                shouldRetryAfterReconnect = false
+                                try? await apiClient.disconnect()
+                                try? await apiClient.connect(inBackground: false)
+                                continue
+                            }
+                            throw error
+                        }
                     }
                 } catch: { error, send in
+                    guard !(error is CancellationError) else { return }
                     let nsError = error as NSError
-                    guard !(error is CancellationError),
-                          !(nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled)
-                    else { return }
-                    await send(.view(.fileUploadCanceled(file.id, .other(nsError))))
+                    guard !(nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled) else { return }
+                    await send(.view(.fileUploadCanceled(file.id, uploadError(from: error))))
                     await send(.internal(.startNextUpload))
                 }
                 .cancellable(id: CancelID.uploading)
@@ -509,6 +534,37 @@ extension AlertState where Action == UploadBoxFeature.Destination.Alert {
 // MARK: - Helpers
 
 private extension UploadBoxFeature {
+    func uploadError(from error: any Error) -> UploadBoxFile.UploadErrorType {
+        if case PDAPIError.uploadNotAuthorized = error {
+            return .notAuthorized
+        }
+        if case PDAPIError.requestTimedOut = error {
+            return .timedOut
+        }
+        if case PDAPIError.notConnected = error {
+            return .uploadFailure
+        }
+        if case PDAPIError.transportClosed = error {
+            return .uploadFailure
+        }
+        if case PDAPIError.reconnectExhausted = error {
+            return .uploadFailure
+        }
+        if case PDAPIError.bootstrapFailed = error {
+            return .uploadFailure
+        }
+        if case PDAPIError.queueOverflow = error {
+            return .uploadFailure
+        }
+        if case PDAPIError.malformedFrame = error {
+            return .uploadFailure
+        }
+        if case PDAPIError.responseDecodingFailed = error {
+            return .uploadFailure
+        }
+        return .other(error as NSError)
+    }
+
     func readCoordinatedFile(at url: URL) -> Data? {
         var data: Data?
         var coordinationError: NSError?

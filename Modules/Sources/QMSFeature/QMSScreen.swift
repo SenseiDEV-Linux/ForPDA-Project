@@ -90,9 +90,17 @@ public struct QMSScreen: View {
                                     messageMyBG: Color(.Background.quaternary),
                                     messageMyText: Color(.Labels.primary),
                                     messageMyTimeText: Color(.systemGray),
-                                    messageFriendBG: Color(.Background.quaternary),
+                                    // ExyteChat also uses messageFriendBG as the menu button background.
+                                    // An opaque color keeps menu text legible over blurred content.
+                                    messageFriendBG: Color(uiColor: UIColor { traits in
+                                        if traits.userInterfaceStyle == .dark {
+                                            return UIColor(red: 39 / 255, green: 45 / 255, blue: 53 / 255, alpha: 1)
+                                        }
+                                        return UIColor(red: 236 / 255, green: 236 / 255, blue: 237 / 255, alpha: 1)
+                                    }),
                                     messageFriendText: Color(.Labels.primary),
                                     messageFriendTimeText: Color(.systemGray),
+                                    menuText: Color(.Labels.primary),
                                     statusGray: Color(.Theme.primary),
                                     sendButtonBackground: Color(.Theme.primary)
                                 )

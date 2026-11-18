@@ -52,6 +52,8 @@ public struct QMSScreen: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
 
+                imageExportPresenter
+
                 if store.chat != nil {
                     ChatView(messages: store.messages) { message in
                         // send(.sendMessageButtonTapped(message))
@@ -67,9 +69,7 @@ public struct QMSScreen: View {
                             }
                         }
                     } messageMenuAction: { (action: ChatAction, _, message) in
-                        if case .copy = action {
-                            UIPasteboard.general.string = message.text
-                        }
+                        handleMessageMenuAction(action, message: message)
                     }
                     .keyboardDismissMode(.interactive)
                     .enableLoadMore { _ in
@@ -108,12 +108,68 @@ public struct QMSScreen: View {
             .navigationTitle(store.title)
             ._toolbarTitleDisplayMode(.inline)
             .alert($store.scope(\.$alert, action: \.alert))
+            .confirmationDialog(
+                Text("qms.delete.message.title", bundle: .module),
+                isPresented: Binding(projectedValue: $store.isDeleteMessageConfirmationPresented),
+                titleVisibility: .visible
+            ) {
+                if store.pendingDeleteMessageIsOwn {
+                    Button(
+                        String(localized: "qms.delete.message.forAll", bundle: .module),
+                        role: .destructive
+                    ) {
+                        send(.deleteMessageConfirmed(forAll: true))
+                    }
+                }
+                Button(
+                    String(localized: "qms.delete.message.forMe", bundle: .module),
+                    role: .destructive
+                ) {
+                    send(.deleteMessageConfirmed(forAll: false))
+                }
+                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
+            }
             .onAppear {
                 send(.onAppear)
             }
         }
     }
     
+    private var imageExportPresenter: some View {
+        QMSImageExportPresenter(
+            isPresented: store.isImageExportPresented,
+            urls: store.imageExportFileURLs,
+            onFinish: { didExport in
+                store.send(.view(.imageFileExportFinished(didExport)))
+            }
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(false)
+    }
+
+    private func handleMessageMenuAction(_ action: ChatAction, message: ExyteChat.Message) {
+        switch action {
+        case .copy:
+            UIPasteboard.general.string = message.text
+        case .delete:
+            guard let messageId = Int(message.id) else { return }
+            send(.deleteMessageTapped(
+                messageId: messageId,
+                isOwnMessage: message.user.isCurrentUser
+            ))
+        case .saveToPhotos:
+            send(.saveImagesToPhotos(imageURLs(in: message)))
+        case .saveToFiles:
+            send(.saveImagesToFiles(imageURLs(in: message)))
+        }
+    }
+
+    private func imageURLs(in message: ExyteChat.Message) -> [URL] {
+        message.attachments
+            .filter { $0.type == .image }
+            .map(\.full)
+    }
+
     private func InputView(text: Binding<String>) -> some View {
         VStack(spacing: 8) {
             UploadBoxView(
@@ -306,7 +362,114 @@ private final class QMSFilePickerPresenterController: UIViewController,
     }
 }
 
-// MARK: - Previews
+private struct QMSImageExportPresenter: UIViewControllerRepresentable {
+    let isPresented: Bool
+    let urls: [URL]
+    let onFinish: (Bool) -> Void
+
+    func makeUIViewController(context: Context) -> QMSImageExportPresenterController {
+        let controller = QMSImageExportPresenterController()
+        controller.configure(isPresented: isPresented, urls: urls, onFinish: onFinish)
+        return controller
+    }
+
+    func updateUIViewController(
+        _ uiViewController: QMSImageExportPresenterController,
+        context: Context
+    ) {
+        uiViewController.configure(isPresented: isPresented, urls: urls, onFinish: onFinish)
+    }
+}
+
+private final class QMSImageExportPresenterController: UIViewController,
+    UIDocumentPickerDelegate,
+    UIAdaptivePresentationControllerDelegate
+{
+    private var shouldPresentPicker = false
+    private var didPresentPicker = false
+    private var documentPicker: UIDocumentPickerViewController?
+    private var fileURLs: [URL] = []
+    private var onFinish: (Bool) -> Void = { _ in }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .clear
+        view.isUserInteractionEnabled = false
+        view.isAccessibilityElement = false
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        presentPickerIfNeeded()
+    }
+
+    func configure(isPresented: Bool, urls: [URL], onFinish: @escaping (Bool) -> Void) {
+        self.fileURLs = urls
+        self.onFinish = onFinish
+        if isPresented {
+            shouldPresentPicker = true
+            presentPickerIfNeeded()
+        } else {
+            shouldPresentPicker = false
+            didPresentPicker = false
+            dismissPickerIfNeeded()
+        }
+    }
+
+    private func presentPickerIfNeeded() {
+        guard shouldPresentPicker,
+              !didPresentPicker,
+              !fileURLs.isEmpty,
+              viewIfLoaded?.window != nil,
+              documentPicker == nil,
+              presentedViewController == nil
+        else { return }
+
+        didPresentPicker = true
+        let picker = UIDocumentPickerViewController(forExporting: fileURLs, asCopy: true)
+        picker.modalPresentationStyle = .fullScreen
+        picker.delegate = self
+        documentPicker = picker
+        present(picker, animated: true) { [weak self, weak picker] in
+            picker?.presentationController?.delegate = self
+        }
+    }
+
+    private func dismissPickerIfNeeded() {
+        guard let picker = documentPicker else { return }
+        documentPicker = nil
+        guard picker.presentingViewController != nil, !picker.isBeingDismissed else { return }
+        picker.dismiss(animated: true)
+    }
+
+    private func finishPicker(_ picker: UIDocumentPickerViewController, didExport: Bool) {
+        guard documentPicker === picker else { return }
+        documentPicker = nil
+        shouldPresentPicker = false
+        let completion: () -> Void = { [weak self] in
+            guard let self else { return }
+            self.onFinish(didExport)
+        }
+        if picker.presentingViewController != nil, !picker.isBeingDismissed {
+            picker.dismiss(animated: true, completion: completion)
+        } else {
+            completion()
+        }
+    }
+
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        finishPicker(controller, didExport: true)
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        finishPicker(controller, didExport: false)
+    }
+
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        guard let picker = documentPicker else { return }
+        finishPicker(picker, didExport: false)
+    }
+}
 
 #Preview {
     @Shared(.userSession) var userSession

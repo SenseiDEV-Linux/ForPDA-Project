@@ -5,6 +5,7 @@
 //  Created by Ilia Lubianoi on 16.05.2026.
 //
 
+import BBPanelFeature
 import ComposableArchitecture
 import SharedUI
 import SwiftUI
@@ -33,6 +34,7 @@ public struct CreateChatScreen: View {
             ZStack {
                 Color(.Background.primary)
                     .ignoresSafeArea()
+                    .onTapGesture { send(.viewTapped) }
                 
                 ScrollView {
                     VStack(spacing: 0) {
@@ -97,11 +99,17 @@ public struct CreateChatScreen: View {
                         
                         Section {
                             Field(
-                                content: $store.message.removeDuplicates(),
+                                content: $store.draft.text,
                                 placeholder: LocalizedStringResource("Enter...", bundle: .module),
                                 focusEqual: .message,
-                                focus: $focus
-                            )
+                                focus: $focus,
+                                minHeight: 144,
+                                selection: $store.draft.selection
+                            ) {
+                                WithPerceptionTracking {
+                                    BBPanelView(store: store.scope(\.bbPanel, action: \.bbPanel))
+                                }
+                            }
                             .padding(.bottom, 28)
                         } header: {
                             Header("Message")
@@ -109,6 +117,7 @@ public struct CreateChatScreen: View {
                     }
                     .padding(.horizontal, 16)
                 }
+                .scrollDismissesKeyboard(.interactively)
                 ._safeAreaBar(edge: .bottom) {
                     Button {
                         send(.sendButtonTapped)
@@ -144,9 +153,6 @@ public struct CreateChatScreen: View {
             .animation(.default, value: store.isSearchingUsers)
             .animation(.default, value: store.shouldShowSearchUsers)
             .bind($store.focus, to: $focus)
-            .onTapGesture {
-                send(.viewTapped)
-            }
         }
     }
     

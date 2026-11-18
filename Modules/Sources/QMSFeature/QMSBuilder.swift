@@ -20,7 +20,7 @@ public struct QMSBuilder {
     
     // TODO: Change to full BBBuilder with container nodes later
     public func build() -> AttributedString {
-        let renderedText = BBRenderer().render(text: text)
+        let renderedText = BBRenderer(inlinePlainQuotes: true).render(text: text)
         let result = NSMutableAttributedString(attributedString: renderedText)
         
         let pattern = #"\[attachment=([^,\]]+),(\d+)(?:,(\d+))?\]"#

@@ -6,6 +6,7 @@
 //
 
 import APIClient
+import BBPanelFeature
 import ComposableArchitecture
 import Models
 import QMSClient
@@ -29,7 +30,8 @@ public struct CreateChatFeature: Reducer, Sendable {
     public struct State: Equatable {
         var username = ""
         var chatTitle = ""
-        var message = ""
+        var draft = BBCodeDraft()
+        var bbPanel = BBPanelFeature.State(for: .qms)
         var focus: Field?
 
         var selectedSearchUser: SearchUsersResponse.SimplifiedUser?
@@ -41,7 +43,7 @@ public struct CreateChatFeature: Reducer, Sendable {
         var canSend: Bool {
             return !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
             !chatTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-            !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
         
         public init(userId: Int? = nil, username: String? = nil) {
@@ -61,6 +63,7 @@ public struct CreateChatFeature: Reducer, Sendable {
     
     public enum Action: BindableAction, ViewAction {
         case binding(BindingAction<State>)
+        case bbPanel(BBPanelFeature.Action)
         
         case view(View)
         public enum View {
@@ -94,9 +97,17 @@ public struct CreateChatFeature: Reducer, Sendable {
     public var body: some Reducer<State, Action> {
         BindingReducer()
         
+        Scope(\.bbPanel, action: \.bbPanel) {
+            BBPanelFeature()
+        }
+
         Reduce { state, action in
             switch action {
-                
+            case let .bbPanel(.delegate(.tagTapped(tags))):
+                state.draft.wrapSelection(in: tags)
+                state.focus = .message
+                return .none
+
                 // MARK: - Binding
                 
             case .binding(\.username):
@@ -108,7 +119,7 @@ public struct CreateChatFeature: Reducer, Sendable {
                 }
                 return .none
                 
-            case .binding:
+            case .binding, .bbPanel:
                 return .none
                 
                 // MARK: - View
@@ -125,7 +136,7 @@ public struct CreateChatFeature: Reducer, Sendable {
                 
             case .view(.sendButtonTapped):
                 guard let user = state.selectedSearchUser else { return .none }
-                return .run { [title = state.chatTitle, message = state.message] send in
+                return .run { [title = state.chatTitle, message = state.draft.text] send in
                     let response = try await qmsClient.createChat(opponentId: user.id, title: title, message: message)
                     await send(.internal(.createChatResult(.success(response))))
                 } catch: { error, send in

@@ -17,20 +17,21 @@ extension QMSFeature {
         @Dependency(\.analyticsClient) var analytics
         
         var body: some Reducer<State, Action> {
-            Reduce<State, Action> { _, action in
+            Reduce<State, Action> { state, action in
                 switch action {
                 case .view(.onAppear),
                      .view(.attachmentButtonTapped),
+                     .view(.quoteMessageTapped),
                      .view(.deleteMessageTapped(messageId: _, isOwnMessage: _)),
                      .view(.deleteMessageConfirmed(forAll: _)),
                      .view(.saveImagesToPhotos(_)),
                      .view(.saveImagesToFiles(_)),
                      .view(.imageFileExportFinished(_)),
-                     .internal, .delegate, .binding, .alert, .upload:
+                     .internal, .delegate, .binding, .alert, .upload, .bbPanel:
                     break
                     
-                case let .view(.sendMessageButtonTapped(draft)):
-                    analytics.log(QMSEvent.sendMessageTapped(isEmpty: draft.text.isEmpty))
+                case .view(.sendMessageButtonTapped):
+                    analytics.log(QMSEvent.sendMessageTapped(isEmpty: state.draft.text.isEmpty))
                     
                 case .view(.loadMoreTriggered):
                     analytics.log(QMSEvent.loadMoreTriggered)

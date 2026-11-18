@@ -197,6 +197,7 @@ let project = Project(
                 dependencies: [
                     .Internal.AnalyticsClient,
                     .Internal.APIClient,
+                    .Internal.BBPanelFeature,
                     .Internal.Models,
                     .Internal.SharedUI,
                     .Internal.QMSClient,
@@ -510,6 +511,7 @@ let project = Project(
                     .Internal.APIClient,
                     .Internal.AnalyticsClient,
                     .Internal.BBBuilder,
+                    .Internal.BBPanelFeature,
                     .Internal.Models,
                     .Internal.NotificationsClient,
                     .Internal.PersistenceKeys,
@@ -943,6 +945,20 @@ let project = Project(
             ]
         ),
         
+        .tests(
+            name: "QMSFeature",
+            sources: ["Modules/Tests/QMSFeatureTests/**"],
+            dependencies: [
+                .Internal.BBPanelFeature,
+                .Internal.CreateChatFeature,
+                .Internal.QMSClient,
+                .Internal.QMSFeature,
+                .Internal.TCAExtensions,
+                .Internal.UploadBoxFeature,
+                .SPM.TCA
+            ]
+        ),
+
         // MARK: - Extensions -
         
             .target(
@@ -1073,6 +1089,7 @@ extension ProjectDescription.Target {
     
     static func tests(
         name: String,
+        sources: SourceFilesList? = nil,
         dependencies: [TargetDependency]
     ) -> ProjectDescription.Target {
         let baseSettings: SettingsDictionary = .targetSettings
@@ -1085,7 +1102,7 @@ extension ProjectDescription.Target {
             bundleId: App.bundleId + "." + name + ".Tests",
             deploymentTargets: App.deploymentTargets,
             infoPlist: .default,
-            sources: ["Modules/Sources/\(name)/Tests/**"],
+            sources: sources ?? ["Modules/Sources/\(name)/Tests/**"],
             // resources: ["Modules/Resources/**"],
             dependencies: dependencies,
             settings: .settings(

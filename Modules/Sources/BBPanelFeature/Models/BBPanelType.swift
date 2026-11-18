@@ -17,9 +17,7 @@ public enum BBPanelType: Equatable {
 extension BBPanelType {
     var kit: [BBPanelTag] {
         switch self {
-        case .qms:
-            return [.b, .i, .u, .s, .quote, .code]
-        case .post:
+        case .qms, .post:
             return [
                 .b, .i, .u, .s, .size, .color, .url, .listBullet, .listNumber, .quote,
                 .spoiler, .spoilerWithTitle, .code, .left, .center, .right, .sub, .sup, .offtop, .hide

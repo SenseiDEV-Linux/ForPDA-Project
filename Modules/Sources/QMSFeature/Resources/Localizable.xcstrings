@@ -33,6 +33,22 @@
         }
       }
     },
+    "qms.message.quote" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quote"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Цитировать"
+          }
+        }
+      }
+    },
     "qms.message.send" : {
       "localizations" : {
         "en" : {

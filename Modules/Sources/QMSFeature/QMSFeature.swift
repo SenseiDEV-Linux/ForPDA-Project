@@ -20,6 +20,7 @@ import NotificationsClient
 import TCAExtensions
 import ExyteChat
 import UploadBoxFeature
+import BBPanelFeature
 
 // ExyteChat dismisses its full-screen message menu after a 300 ms animation.
 private let qmsChatMenuDismissDelay = Duration.milliseconds(350)
@@ -59,13 +60,14 @@ public struct QMSFeature: Reducer, Sendable {
         var imageExportFileURLs: [URL] = []
         var isImageExportPresented = false
         var upload = UploadBoxFeature.State(type: .qms)
+        var bbPanel = BBPanelFeature.State(for: .qms)
+        var focusedChatId: Int?
         
         var hasMoreOlderMessages = true
         var isLoadingMore = false
         var isSending = false
         
-        var draftText = ""
-        var draftSnapshot = ""
+        var draft = BBCodeDraft()
         
         var uploadedAttachmentIDs: [Int] {
             upload.files.compactMap { file in
@@ -76,7 +78,7 @@ public struct QMSFeature: Reducer, Sendable {
 
         var canSendMessage: Bool {
             !isSending && !upload.isAnyFileUploading &&
-            (!draftText.isEmpty || !uploadedAttachmentIDs.isEmpty)
+            (!draft.text.isEmpty || !uploadedAttachmentIDs.isEmpty)
         }
 
         public var title: String {
@@ -97,6 +99,7 @@ public struct QMSFeature: Reducer, Sendable {
     public enum Action: BindableAction, ViewAction {
         case binding(BindingAction<State>)
         case upload(UploadBoxFeature.Action)
+        case bbPanel(BBPanelFeature.Action)
         
         case alert(PresentationAction<Alert>)
         public enum Alert {
@@ -107,7 +110,8 @@ public struct QMSFeature: Reducer, Sendable {
         public enum View {
             case onAppear
             case attachmentButtonTapped
-            case sendMessageButtonTapped(DraftMessage)
+            case sendMessageButtonTapped
+            case quoteMessageTapped(Int)
             case loadMoreTriggered
             case urlTapped(URL)
             case deleteMessageTapped(messageId: Int, isOwnMessage: Bool)
@@ -154,9 +158,29 @@ public struct QMSFeature: Reducer, Sendable {
             UploadBoxFeature()
         }
 
+        Scope(\.bbPanel, action: \.bbPanel) {
+            BBPanelFeature()
+        }
+
         Reduce<State, Action> { state, action in
             switch action {
-            case .alert, .delegate, .upload:
+            case let .bbPanel(.delegate(.tagTapped(tags))):
+                guard !state.isSending else { return .none }
+                state.draft.wrapSelection(in: tags)
+                state.focusedChatId = state.chatId
+                return .none
+
+            case let .view(.quoteMessageTapped(id)):
+                guard !state.isSending,
+                      let message = state.chat?.messages.first(where: { $0.id == id })
+                else { return .none }
+                // File-only rows display synthesized attachment tags. Quote the names, not the upload IDs.
+                let text = message.text.isEmpty ? message.attachments.map(\.name).joined(separator: "\n") : message.text
+                state.draft.insertQuote(text)
+                state.focusedChatId = state.chatId
+                return .none
+
+            case .alert, .delegate, .upload, .bbPanel:
                 return .none
                 
             case let .view(.deleteMessageTapped(messageId, isOwnMessage)):
@@ -250,18 +274,11 @@ public struct QMSFeature: Reducer, Sendable {
                 guard !state.isSending, !state.upload.isAnyFileUploading else { return .none }
                 return .send(.upload(.view(.selectFilesButtonTapped)))
 
-            case let .view(.sendMessageButtonTapped(draftMessage)):
-                let attachments = state.uploadedAttachmentIDs
-                guard !state.isSending,
-                      !state.upload.isAnyFileUploading,
-                      (!draftMessage.text.isEmpty || !attachments.isEmpty)
-                else { return .none }
-                
-                state.draftText = ""
-                state.draftSnapshot = draftMessage.text
+            case .view(.sendMessageButtonTapped):
+                guard state.canSendMessage else { return .none }
                 state.isSending = true
-                
-                return .run { [chatId = state.chatId, message = draftMessage.text, attachments] send in
+
+                return .run { [chatId = state.chatId, message = state.draft.text, attachments = state.uploadedAttachmentIDs] send in
                     try await qmsClient.sendMessage(chatId: chatId, message: message, attachments: attachments)
                     await send(.internal(.messageSent(attachments)))
                 } catch: { error, send in
@@ -281,7 +298,7 @@ public struct QMSFeature: Reducer, Sendable {
                 
             case let .internal(.messageSent(attachments)):
                 state.isSending = false
-                state.draftSnapshot = ""
+                state.draft = BBCodeDraft()
                 let sentAttachmentIDs = Set(attachments)
                 state.upload.files.removeAll { file in
                     guard let serverId = file.serverId else { return false }
@@ -291,8 +308,6 @@ public struct QMSFeature: Reducer, Sendable {
 
             case let .internal(.messageSendError(error)):
                 state.isSending = false
-                state.draftText = state.draftSnapshot
-                state.draftSnapshot = ""
                 state.alert = .somethingWentWrong
                 analyticsClient.capture(error)
                 return .none

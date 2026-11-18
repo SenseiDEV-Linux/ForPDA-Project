@@ -23,7 +23,7 @@ extension CreateChatFeature {
                     
                     // MARK: - Binding
                     
-                case .binding:
+                case .binding, .bbPanel:
                     break
                     
                     // MARK: - View

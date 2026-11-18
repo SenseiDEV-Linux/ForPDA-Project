@@ -10,6 +10,7 @@ import SwiftUI
 
 enum ChatAction: MessageMenuAction {
     case copy
+    case quote
     case saveToPhotos
     case saveToFiles
     case delete
@@ -18,6 +19,8 @@ enum ChatAction: MessageMenuAction {
         switch self {
         case .copy:
             return String(localized: "Copy", bundle: .module)
+        case .quote:
+            return String(localized: "qms.message.quote", bundle: .module)
         case .saveToPhotos:
             return String(localized: "qms.image.save.photos", bundle: .module)
         case .saveToFiles:
@@ -31,6 +34,8 @@ enum ChatAction: MessageMenuAction {
         switch self {
         case .copy:
             return Image(systemSymbol: .clipboard)
+        case .quote:
+            return Image(systemSymbol: .quoteOpening)
         case .saveToPhotos:
             return Image(systemName: "square.and.arrow.down")
         case .saveToFiles:
@@ -41,7 +46,7 @@ enum ChatAction: MessageMenuAction {
     }
 
     static func menuItems(for message: Message) -> [ChatAction] {
-        var actions: [ChatAction] = message.text.isEmpty ? [] : [.copy]
+        var actions: [ChatAction] = message.text.isEmpty ? [] : [.quote, .copy]
         if message.attachments.contains(where: { $0.type == .image }) {
             actions += [.saveToPhotos, .saveToFiles]
         }

@@ -13,6 +13,7 @@ import SharedUI
 import SFSafeSymbols
 import ExyteChat
 import UploadBoxFeature
+import BBPanelFeature
 
 @ViewAction(for: QMSFeature.self)
 public struct QMSScreen: View {
@@ -20,7 +21,7 @@ public struct QMSScreen: View {
     // MARK: - Properties
     
     @Perception.Bindable public var store: StoreOf<QMSFeature>
-    @Environment(\.tintColor) private var tintColor
+    @FocusState private var focusedChatId: Int?
     
     // MARK: - Init
     
@@ -55,14 +56,14 @@ public struct QMSScreen: View {
                 imageExportPresenter
 
                 if store.chat != nil {
-                    ChatView(messages: store.messages) { message in
-                        // send(.sendMessageButtonTapped(message))
-                    } inputViewBuilder: { text, _, _, inputViewStyle, inputViewActionClosure, _ in
+                    ChatView(messages: store.messages) { _ in
+                        // The custom composer sends through QMSFeature, not ExyteChat's draft.
+                    } inputViewBuilder: { _, _, _, inputViewStyle, _, _ in
                         WithPerceptionTracking {
                             Group {
                                 switch inputViewStyle {
                                 case .message:
-                                    InputView(text: text)
+                                    InputView()
                                 case .signature:
                                     EmptyView()
                                 }
@@ -151,6 +152,9 @@ public struct QMSScreen: View {
         switch action {
         case .copy:
             UIPasteboard.general.string = message.text
+        case .quote:
+            guard let id = Int(message.id) else { return }
+            send(.quoteMessageTapped(id))
         case .delete:
             guard let messageId = Int(message.id) else { return }
             send(.deleteMessageTapped(
@@ -170,7 +174,7 @@ public struct QMSScreen: View {
             .map(\.full)
     }
 
-    private func InputView(text: Binding<String>) -> some View {
+    private func InputView() -> some View {
         VStack(spacing: 8) {
             UploadBoxView(
                 store: store.scope(\.upload, action: \.upload),
@@ -178,35 +182,35 @@ public struct QMSScreen: View {
             )
             .disabled(store.isSending)
             
-            HStack(spacing: 8) {
-                #if DEBUG
-                if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" {
-                    Button(String("+")) { text.wrappedValue += "text" }
-                        .buttonStyle(.borderedProminent)
+            HStack(alignment: .bottom, spacing: 8) {
+                SharedUI.Field(
+                    content: $store.draft.text,
+                    placeholder: LocalizedStringResource("qms.textfield.placeholder", bundle: .module),
+                    focusEqual: store.chatId,
+                    focus: $focusedChatId,
+                    maxTextHeight: 96,
+                    selection: $store.draft.selection
+                ) {
+                    WithPerceptionTracking {
+                        BBPanelView(store: store.scope(\.bbPanel, action: \.bbPanel)) {
+                            Button {
+                                send(.attachmentButtonTapped)
+                            } label: {
+                                Image(systemSymbol: .paperclip)
+                                    .font(.title3)
+                                    .foregroundStyle(Color(.Labels.primary))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(Text("qms.attachments.add", bundle: .module))
+                            .disabled(store.upload.isAnyFileUploading)
+                        }
+                    }
                 }
-                #endif
+                .fixedSize(horizontal: false, vertical: true)
+                .disabled(store.isSending)
 
                 Button {
-                    send(.attachmentButtonTapped)
-                } label: {
-                    Image(systemSymbol: .paperclip)
-                        .font(.title3.weight(.medium))
-                        .foregroundStyle(tintColor)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text("qms.attachments.add", bundle: .module))
-                .disabled(store.isSending || store.upload.isAnyFileUploading)
-
-                TextField(String(""), text: text, prompt: Text("qms.textfield.placeholder", bundle: .module))
-                    .padding()
-                    .background(Color(.Background.quaternary), in: .rect(cornerRadius: 16))
-
-                Button {
-                    send(.sendMessageButtonTapped(
-                        DraftMessage(text: text.wrappedValue, medias: [], giphyMedia: nil, recording: nil, replyMessage: nil, createdAt: .now)
-                    ))
+                    send(.sendMessageButtonTapped)
                 } label: {
                     Circle()
                         .fill(Color(.Theme.primary))
@@ -231,8 +235,7 @@ public struct QMSScreen: View {
         .padding()
         .animation(.default, value: store.isSending)
         .animation(.default, value: store.canSendMessage)
-        .animation(.default, value: text.wrappedValue)
-        .bind(text, to: $store.draftText)
+        .bind($store.focusedChatId, to: $focusedChatId)
     }
 }
 

@@ -19,6 +19,7 @@ public struct Field<T: Hashable, BBPanel: View>: View {
     let focusEqual: T
     let characterLimit: Int?
     let minHeight: CGFloat?
+    let maxTextHeight: CGFloat?
     var selection: Binding<NSRange?>
     let bbPanel: () -> BBPanel
     
@@ -31,6 +32,7 @@ public struct Field<T: Hashable, BBPanel: View>: View {
         focus: FocusState<T?>.Binding,
         characterLimit: Int? = nil,
         minHeight: CGFloat? = nil,
+        maxTextHeight: CGFloat? = nil,
         selection: Binding<NSRange?> = .constant(nil),
         @ViewBuilder bbPanel: @escaping () -> BBPanel = { EmptyView() }
     ) {
@@ -39,6 +41,7 @@ public struct Field<T: Hashable, BBPanel: View>: View {
         self.focusEqual = focusEqual
         self.characterLimit = characterLimit
         self.minHeight = minHeight
+        self.maxTextHeight = maxTextHeight
         self.selection = selection
         self.bbPanel = bbPanel
         
@@ -53,7 +56,8 @@ public struct Field<T: Hashable, BBPanel: View>: View {
                 content: content,
                 selection: selection,
                 placeholder: placeholder,
-                characterLimit: characterLimit
+                characterLimit: characterLimit,
+                maxTextHeight: maxTextHeight
             )
             
             if BBPanel.self != EmptyView.self {
@@ -184,6 +188,7 @@ private struct SelectableTextView: UIViewRepresentable {
     @Binding var selection: NSRange?
     let placeholder: LocalizedStringResource
     let characterLimit: Int?
+    let maxTextHeight: CGFloat?
     
     static let placeholderColor = UIColor.lightGray
     
@@ -195,7 +200,7 @@ private struct SelectableTextView: UIViewRepresentable {
         view.backgroundColor = .clear
         view.textContainer.lineFragmentPadding = 0
         view.textContainerInset = .zero
-        view.isScrollEnabled = false
+        view.isScrollEnabled = maxTextHeight != nil
         
         view.font = UIFont.preferredFont(forTextStyle: .body)
         
@@ -203,28 +208,64 @@ private struct SelectableTextView: UIViewRepresentable {
     }
     
     func updateUIView(_ uiView: UITextView, context: Context) {
-        if content.isEmpty {
-            if !uiView.isFirstResponder {
-                let placeholderText = String(localized: placeholder)
+        context.coordinator.content = $content
+        context.coordinator.selection = $selection
+        context.coordinator.isUpdating = true
+        defer {
+            context.coordinator.lastContent = content
+            context.coordinator.isUpdating = false
+        }
 
-                if uiView.text != placeholderText {
+        if uiView.isEditable != context.environment.isEnabled {
+            uiView.isEditable = context.environment.isEnabled
+        }
+        let previousText = uiView.text ?? ""
+        let wasShowingPlaceholder = uiView.textColor == Self.placeholderColor
+
+        if content.isEmpty {
+            if uiView.isFirstResponder {
+                let shouldClearMarkedText = !context.coordinator.lastContent.isEmpty
+                if uiView.markedTextRange == nil || shouldClearMarkedText {
+                    if uiView.markedTextRange != nil {
+                        uiView.unmarkText()
+                    }
+                    if !(uiView.text ?? "").isEmpty {
+                        uiView.text = ""
+                    }
+                }
+                uiView.textColor = .label
+            } else {
+                let placeholderText = String(localized: placeholder)
+                uiView.textColor = Self.placeholderColor
+
+                if !wasShowingPlaceholder || previousText != placeholderText {
                     uiView.text = placeholderText
                 }
-
-                uiView.textColor = Self.placeholderColor
             }
         } else {
-            if uiView.text != content {
+            uiView.textColor = .label
+
+            if uiView.markedTextRange == nil, wasShowingPlaceholder || previousText != content {
                 uiView.text = content
             }
+        }
 
-            uiView.textColor = .label
+        if (uiView.text ?? "") != previousText {
+            uiView.invalidateIntrinsicContentSize()
         }
 
         // when range (selection binding) has been changed in external place
-        if let externalSelection = selection,
-           uiView.selectedRange != externalSelection {
-            uiView.selectedRange = externalSelection
+        if uiView.textColor != Self.placeholderColor,
+           uiView.markedTextRange == nil,
+           let externalSelection = selection,
+           externalSelection.location != NSNotFound {
+            let textLength = (uiView.text ?? "").utf16.count
+            let location = min(max(0, externalSelection.location), textLength)
+            let length = min(max(0, externalSelection.length), textLength - location)
+            let clampedSelection = NSRange(location: location, length: length)
+            if uiView.selectedRange != clampedSelection {
+                uiView.selectedRange = clampedSelection
+            }
         }
     }
     
@@ -233,7 +274,7 @@ private struct SelectableTextView: UIViewRepresentable {
         let size = uiView.sizeThatFits(
             CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
         )
-        return CGSize(width: width, height: ceil(size.height))
+        return CGSize(width: width, height: min(ceil(size.height), maxTextHeight ?? .greatestFiniteMagnitude))
     }
     
     func makeCoordinator() -> Coordinator {
@@ -250,6 +291,8 @@ private struct SelectableTextView: UIViewRepresentable {
         var selection: Binding<NSRange?>
         let characterLimit: Int?
         let placeholder: LocalizedStringResource
+        var isUpdating = false
+        var lastContent: String
         
         init(
             content: Binding<String>,
@@ -261,6 +304,7 @@ private struct SelectableTextView: UIViewRepresentable {
             self.selection = selection
             self.characterLimit = characterLimit
             self.placeholder = placeholder
+            self.lastContent = content.wrappedValue
         }
         
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText: String) -> Bool {
@@ -271,24 +315,39 @@ private struct SelectableTextView: UIViewRepresentable {
         }
         
         func textViewDidChangeSelection(_ textView: UITextView) {
-            selection.wrappedValue = textView.selectedRange
+            guard !isUpdating, textView.isFirstResponder,
+                  textView.textColor != placeholderColor,
+                  textView.selectedRange.location != NSNotFound
+            else { return }
+            if selection.wrappedValue != textView.selectedRange {
+                selection.wrappedValue = textView.selectedRange
+            }
         }
         
         func textViewDidChange(_ textView: UITextView) {
-            content.wrappedValue = textView.text
+            guard !isUpdating else { return }
+            let updatedText = textView.textColor == placeholderColor ? "" : (textView.text ?? "")
+            lastContent = updatedText
+            if content.wrappedValue != updatedText {
+                content.wrappedValue = updatedText
+            }
         }
         
         func textViewDidBeginEditing(_ textView: UITextView) {
             if textView.textColor == placeholderColor {
+                isUpdating = true
                 textView.text = nil
                 textView.textColor = UIColor.label
+                isUpdating = false
             }
         }
         
         func textViewDidEndEditing(_ textView: UITextView) {
             if textView.text.isEmpty {
-                textView.text = String(localized: placeholder)
+                isUpdating = true
                 textView.textColor = placeholderColor
+                textView.text = String(localized: placeholder)
+                isUpdating = false
             }
         }
     }

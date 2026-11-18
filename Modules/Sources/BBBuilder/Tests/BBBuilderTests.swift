@@ -15,6 +15,12 @@ struct BBBuilderTests {
     
     // MARK: - Texts
 
+    @Test func plainChatQuotesRenderInlineWithoutChangingTopicParsing() {
+        let source = "[B][QUOTE]а [QUOTE]б[/QUOTE][/QUOTE][/B]"
+        #expect(BBRenderer(inlinePlainQuotes: true).render(text: source).string == "«а «б»»")
+        #expect(BBRenderer().render(text: source).string == "[quote]а [quote]б[/quote][/quote]")
+    }
+
     @Test func singleText() async throws {
         let text = "test"
         let nodes = BBBuilder.build(text: text)

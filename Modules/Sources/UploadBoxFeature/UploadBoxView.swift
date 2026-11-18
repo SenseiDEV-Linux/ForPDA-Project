@@ -107,56 +107,60 @@ public struct UploadBoxView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(store.files, id: \.id) { file in
-                        HStack(spacing: 7) {
-                            if file.isUploading {
-                                ProgressView()
-                                    .controlSize(.small)
-                                    .frame(width: 16, height: 16)
-                            } else if file.uploadingError != nil {
-                                Button {
-                                    send(.fileWithErrorButtonTapped(file.id))
-                                } label: {
-                                    Image(systemSymbol: .exclamationmarkTriangle)
-                                        .foregroundStyle(.red)
-                                        .frame(width: 16, height: 16)
-                                }
-                                .buttonStyle(.plain)
-                            } else {
-                                Image(systemSymbol: file.type == .file ? .doc : .photo)
-                                    .foregroundStyle(tintColor)
-                                    .frame(width: 16, height: 16)
-                            }
-
-                            Text(file.name)
-                                .font(.caption)
-                                .foregroundStyle(Color(.Labels.primary))
-                                .lineLimit(1)
-                                .frame(maxWidth: 150)
-
-                            Button {
-                                send(.removeFileButtonTapped(file))
-                            } label: {
-                                Image(systemSymbol: .xmark)
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(Color(.Labels.teritary))
-                                    .frame(width: 20, height: 20)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(.leading, 10)
-                        .padding(.trailing, 5)
-                        .padding(.vertical, 5)
-                        .background(backgroundColors.tertiary, in: Capsule())
-                        .overlay {
-                            Capsule()
-                                .stroke(Color(.Separator.secondary), lineWidth: 1)
-                        }
+                        FileChip(file)
                     }
                 }
                 .padding(.horizontal, 4)
             }
             .frame(height: 36)
             .animation(.default, value: store.files)
+        }
+    }
+
+    private func FileChip(_ file: UploadBoxFile) -> some View {
+        HStack(spacing: 7) {
+            if file.isUploading {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 16, height: 16)
+            } else if file.uploadingError != nil {
+                Button {
+                    send(.fileWithErrorButtonTapped(file.id))
+                } label: {
+                    Image(systemSymbol: .exclamationmarkTriangle)
+                        .foregroundStyle(.red)
+                        .frame(width: 16, height: 16)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Image(systemSymbol: file.type == .file ? .doc : .photo)
+                    .foregroundStyle(tintColor)
+                    .frame(width: 16, height: 16)
+            }
+
+            Text(file.name)
+                .font(.caption)
+                .foregroundStyle(Color(.Labels.primary))
+                .lineLimit(1)
+                .frame(maxWidth: 150)
+
+            Button {
+                send(.removeFileButtonTapped(file))
+            } label: {
+                Image(systemSymbol: .xmark)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color(.Labels.teritary))
+                    .frame(width: 20, height: 20)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.leading, 10)
+        .padding(.trailing, 5)
+        .padding(.vertical, 5)
+        .background(Color(.Background.teritary), in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(Color(.Separator.secondary), lineWidth: 1)
         }
     }
 
